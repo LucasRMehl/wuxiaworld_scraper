@@ -70,7 +70,7 @@ def scrape(url, books, delay, skip_epub, debug):
         if elem.text.split()[0] in ("Book", "Volume"):
 
             # Skip unwanted books/volumes
-            booknum = elem.text.split()[1]
+            booknum = elem.text.split()[1].strip(':')
             if books and int(booknum) not in books:
                 print "Skipping Book {}...".format(booknum)
                 continue
@@ -78,7 +78,8 @@ def scrape(url, books, delay, skip_epub, debug):
             print "Processing Book {}".format(booknum)
 
             # This is a book!  Open a new HTML file and write some metadata
-            fname = "".join(title.split()) + elem.text.split()[0] + elem.text.split()[1].zfill(2) + ".html"
+            fname = ("".join(title.split()) + elem.text.split()[0] +
+                     elem.text.split()[1].strip(":").zfill(2) + ".html")
             fnames.append(fname)
             # Use codecs.open to ensure we maintain unicode throughout
             if debug:
@@ -92,6 +93,7 @@ def scrape(url, books, delay, skip_epub, debug):
                 # Now request each chapter and extract the content
                 # NOTE: This could be parallelized, but we don't want to get banned!
                 #       A scraper might get banned anyway...
+                ch_num = 0
                 for ch_url in elem.find_all_next(True):
                     # If it's a horizontal rule or a strong, there's a new book
                     if ch_url.name in ['hr', 'strong']:
@@ -149,7 +151,7 @@ def scrape(url, books, delay, skip_epub, debug):
                             if debug:
                                 print "DEBUG: strong element found: {}".format(tmp)
                             # Coiling Dragon- and Against the Gods-style chapter titles
-                            if tmp.split()[0] in ("Book", "Chapter"):
+                            if "Chapter" in tmp.split():
                                 ch_title = tmp[tmp.find("Chapter"):].replace("Chapter", "Ch.")
                                 continue
                             # Stellar Transformations-style chapter titles
@@ -158,6 +160,14 @@ def scrape(url, books, delay, skip_epub, debug):
                             # Handle prologue
                             elif tmp.split()[0] in ("Prologue"):
                                 ch_title = tmp
+                            # Handle stupid HTML in Stellar Transformations Chapter Ones
+                            elif "Book" in tmp.split():
+                                # Get next element text, which should be B[0-9]+C[0-9]+
+                                tmp = this_strong.find_next(True).text.strip()
+                                if re.match('B[0-9]+C[0-9]+', tmp):
+                                    ch_title = re.sub('B[0-9]+C', 'Ch. ', tmp)
+                                else:
+                                    continue
                         except IndexError:
                             pass
 
@@ -168,6 +178,10 @@ def scrape(url, books, delay, skip_epub, debug):
                     # Put chapter title in h1 so the epub converter will see it as a chapter
                     if debug:
                         print "DEBUG: Chapter title found: {}".format(ch_title)
+                    else:
+                        ch_num += 1
+                        sys.stdout.write("Processing Ch. {}...\r".format(ch_num))
+                        sys.stdout.flush()
                     out.write('\n\n<h1>{}</h1>\n'.format(ch_title))
 
                     # Then loop through each next element and plop it in there

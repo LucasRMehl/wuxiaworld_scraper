@@ -5,6 +5,7 @@ Supported stories
 -----------------
 * [Against the Gods](http://www.wuxiaworld.com/atg-index/)
 * [Coiling Dragon](http://www.wuxiaworld.com/cdindex-html/)
+* [Desolate Era](http://www.wuxiaworld.com/desolate-era-index)
 * [Stellar Transformations](http://www.wuxiaworld.com/st-index/)
 
 A quick Python scraper for wuxiaworld.com using Requests & BeautifulSoup.
@@ -26,14 +27,35 @@ Creates separate HTML and optionally EPUBs for each "Book."
 Here is what argparse tells me the usage is:
 
 ```
-    usage: wuxiaworld_scraper.py [-h] [--delay DELAY] [--books BOOKS
-                               [BOOKS ...]] [--no-epub]  url
+    $ ./wuxiaworld_scraper.py -h
+    usage: wuxiaworld_scraper.py [-h] [--delay DELAY] [--books BOOKS [BOOKS ...]]
+                                 [--no-epub] [-v]
+                                 url
+
+    Wuxiaworld Scraper
+
+    positional arguments:
+      url                   Index page of story to scrape
+
+    optional arguments:
+      -h, --help            show this help message and exit
+      --delay DELAY         Delay between scraping chapters (don't wanna get
+                            banned!)
+      --books BOOKS [BOOKS ...]
+                            The books to download (defaults to all)
+      --no-epub             Automatically run pandoc to convert to epub. (Requires
+                            pandoc on path)
+      -v, --verbose         Adds debugging statements to output
+
 ```
 
 DELAY is the pause between chapter downloads so we don't make a ton of requests
 very fast, which could get us banned. By default, the script waits one second
 between chapter downloads. It could be way faster if the books downloaded in
 parallel, but don't do that. I haven't gotten banned yet with all my testing...
+
+Passing the verbose flag will give you some feedback in case the default
+behavior doesn't seem to be working or if you want to tinker with the code.
 
 Here are some ways to run it:
 
@@ -58,9 +80,7 @@ Download books 5-7 of Stellar Transformations and make EPUBs:
 
 Known Bugs
 ----------
-* Stellar Transformations does something weird with the chapter 1 titles, so
-it's not quite right in the output.  My workaround is to manually fix the HTML
-and then run pandoc.
+* None (please report them!)
 
 Future Work
 -----------
