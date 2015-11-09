@@ -51,9 +51,12 @@ def run_pandoc_on(filenames):
             print 'Converting to epub failed for {}. Skipping...'.format(fn)
 
 
-def scrape(url, books, delay, skip_epub):
+def scrape(url, books, delay, skip_epub, debug):
     ''' Scrapes the given URL and creates combined HTML file '''
     # Process index page
+    if debug:
+        print "DEBUG: Processing chapter index at URL:"
+        print "DEBUG: {}".format(url)
     title, desc, start = process_index_page(url)
 
     # Save filenames for conversion later
@@ -62,9 +65,11 @@ def scrape(url, books, delay, skip_epub):
     # book names are between <strong> tags
     for elem in start.find_all_next('strong'):
 
-        if elem.text.split()[0] == "Book":
+        # Book: Coiling Dragon/Stellar Transformations
+        # Volume: Against the Gods
+        if elem.text.split()[0] in ("Book", "Volume"):
 
-            # Skip unwanted books
+            # Skip unwanted books/volumes
             booknum = elem.text.split()[1]
             if books and int(booknum) not in books:
                 print "Skipping Book {}...".format(booknum)
@@ -76,6 +81,8 @@ def scrape(url, books, delay, skip_epub):
             fname = "".join(title.split()) + elem.text.split()[0] + elem.text.split()[1].zfill(2) + ".html"
             fnames.append(fname)
             # Use codecs.open to ensure we maintain unicode throughout
+            if debug:
+                print "DEBUG: Opening file {}".format(fname)
             with codecs.open(fname, 'w', 'utf-8') as out:
                 html_title = title + ": " + elem.text
                 out.write(('<html>\n<head>\n<meta charset="utf-8">\n<meta name'
@@ -93,9 +100,25 @@ def scrape(url, books, delay, skip_epub):
                     # If it's something other than an anchor, skip it
                     elif ch_url.name != 'a':
                         continue
+                    # If there is no link target, skip it
+                    elif ch_url.get('href') is None:
+                        continue
 
                     time.sleep(delay)  # Slow down a bit so we don't get banned
-                    r_chap = requests.get(ch_url.get('href'))
+                    actual_ch_url = ch_url.get('href')
+
+                    # Manual override for ATG link mistakes (e.g. Ch 128)
+                    if ".com/atg-ch" in actual_ch_url:
+                        if debug:
+                            print "DEBUG: Found link error:"
+                            print "DEBUG: {}".format(actual_ch_url)
+                            print "DEBUG: Link replaced"
+                        actual_ch_url = actual_ch_url.replace(".com/atg-ch", ".com/atg-index/atg-ch")
+
+                    if debug:
+                        print "DEBUG: Fetching chapter URL:"
+                        print "DEBUG: {}".format(actual_ch_url)
+                    r_chap = requests.get(actual_ch_url)
                     r_chap.encoding = 'utf-8'
                     ch_soup = BeautifulSoup(r_chap.text, 'html.parser')
                     first_el = ch_soup.find(True)
@@ -123,15 +146,18 @@ def scrape(url, books, delay, skip_epub):
                             print "Check source for {} and update code.".format(ch_url.get('href'))
                             sys.exit(-1)
                         try:
-                            # Coiling Dragon-style chapter titles
-                            if tmp.split()[0] == "Book":
+                            if debug:
+                                print "DEBUG: strong element found: {}".format(tmp)
+                            # Coiling Dragon- and Against the Gods-style chapter titles
+                            if tmp.split()[0] in ("Book", "Chapter"):
                                 ch_title = tmp[tmp.find("Chapter"):].replace("Chapter", "Ch.")
-                                print "Chapter title: {}".format(ch_title)
                                 continue
                             # Stellar Transformations-style chapter titles
                             elif re.match('B[0-9]+C[0-9]+', tmp):
                                 ch_title = re.sub('B[0-9]+C', 'Ch. ', tmp)
-                                print "Chapter title: {}".format(ch_title)
+                            # Handle prologue
+                            elif tmp.split()[0] in ("Prologue"):
+                                ch_title = tmp
                         except IndexError:
                             pass
 
@@ -140,6 +166,8 @@ def scrape(url, books, delay, skip_epub):
                             sys.exit(-1)
 
                     # Put chapter title in h1 so the epub converter will see it as a chapter
+                    if debug:
+                        print "DEBUG: Chapter title found: {}".format(ch_title)
                     out.write('\n\n<h1>{}</h1>\n'.format(ch_title))
 
                     # Then loop through each next element and plop it in there
@@ -152,10 +180,9 @@ def scrape(url, books, delay, skip_epub):
                         elif p.name == "p":
                             # Some chapters don't have the hr, so make sure it
                             # doesn't have any links (the prev/next chapter links)
-                            clist = list(p.children)
-                            if len(clist) > 0:
-                                ctags = [child.name for child in clist]
-                                if "a" in ctags:
+                            for link in p.children:
+                                if link.name == "a" and \
+                                   link.text.strip() in ("Previous Chapter", "Next Chapter"):
                                     break
                             out.write(unicode(p))
                             out.write("\n")
@@ -175,17 +202,25 @@ def main():
     parser = argparse.ArgumentParser(description='Wuxiaworld Scraper')
     parser.add_argument('url', help='Index page of story to scrape',
                         default='http://www.wuxiaworld.com/cdindex-html')
-    parser.add_argument('--delay', default=1,
+    parser.add_argument('--delay', default='1',
                         help=('Delay between scraping chapters (don\'t wanna '
                               'get banned!)'))
     parser.add_argument('--books', nargs='+', type=int, default=None,
                         help='The books to download (defaults to all)')
-    parser.add_argument('--no-epub', action='store_false',
+    parser.add_argument('--no-epub', action='store_true',
                         help=('Automatically run pandoc to convert to epub. '
                               '(Requires pandoc on path)'))
+    parser.add_argument('-v', '--verbose', action='store_true',
+                        help='Adds debugging statements to output')
     args = parser.parse_args()
 
-    scrape(args.url, args.books, args.delay, args.no_epub)
+    if args.verbose:
+        print "DEBUG: args passed to scraper:"
+        print "Index URL: {}".format(args.url)
+        print "Books: {}".format(str(args.books))
+        print "Delay: {}".format(str(args.delay))
+        print "No EPUB flag {}".format(str(args.no_epub))
+    scrape(args.url, args.books, float(args.delay), args.no_epub, args.verbose)
 
 if __name__ == "__main__":
     main()
