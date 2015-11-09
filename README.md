@@ -1,6 +1,12 @@
 Wuxiaworld Scraper
 ==================
 
+Supported stories
+-----------------
+* [Against the Gods](http://www.wuxiaworld.com/atg-index/)
+* [Coiling Dragon](http://www.wuxiaworld.com/cdindex-html/)
+* [Stellar Transformations](http://www.wuxiaworld.com/st-index/)
+
 A quick Python scraper for wuxiaworld.com using Requests & BeautifulSoup.
 Unlike the EPUBs floating around, the ones that come out of here have correct
 chapter breaks and hyperlinked table of contents.
@@ -14,7 +20,7 @@ on this matter.
 Even better, go participate in the community and let the translator know how
 much you appreciate his work!
 
-Only tested with Coiling Dragon and Stellar Transformations on Linux for now.
+Only tested on Linux for now.
 Creates separate HTML and optionally EPUBs for each "Book."
 
 Here is what argparse tells me the usage is:
