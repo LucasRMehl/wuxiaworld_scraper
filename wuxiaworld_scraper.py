@@ -36,6 +36,90 @@ def process_index_page(url):
     return (title, desc, start)
 
 
+def process_chapter_page(ch_url, ch_num, out, debug):
+    ''' Processes the chapter itself '''
+    r_chap = requests.get(ch_url)
+    r_chap.encoding = 'utf-8'
+    ch_soup = BeautifulSoup(r_chap.text, 'html.parser')
+    first_el = ch_soup.find(True)
+    this_strong = first_el
+    this_bold = first_el
+    tmp = ''
+    tries = 0
+    ch_title = ''
+    while not ch_title:
+        tries += 1
+        if this_strong:
+            try:
+                this_strong = this_strong.find_next("strong")
+                tmp = this_strong.text.strip()
+            except AttributeError:
+                pass
+        elif this_bold:
+            try:
+                this_bold = this_bold.find_next("b")
+                tmp = this_bold.text.strip()
+            except AttributeError:
+                pass
+        else:
+            print "Could not find any strong or bold elements with the title inside!"
+            print "Check source for {} and update code.".format(ch_url.get('href'))
+            sys.exit(-1)
+        try:
+            if debug:
+                print "DEBUG: strong element found: {}".format(tmp)
+            # Coiling Dragon- and Against the Gods-style chapter titles
+            if "Chapter" in tmp.split():
+                ch_title = tmp[tmp.find("Chapter"):].replace("Chapter", "Ch.")
+                continue
+            # Stellar Transformations-style chapter titles
+            elif re.match('B[0-9]+C[0-9]+', tmp):
+                ch_title = re.sub('B[0-9]+C', 'Ch. ', tmp)
+            # Handle prologue
+            elif tmp.split()[0] in ("Prologue"):
+                ch_title = tmp
+            # Handle stupid HTML in Stellar Transformations Chapter Ones
+            elif "Book" in tmp.split():
+                # Get next element text, which should be B[0-9]+C[0-9]+
+                tmp = this_strong.find_next(True).text.strip()
+                if re.match('B[0-9]+C[0-9]+', tmp):
+                    ch_title = re.sub('B[0-9]+C', 'Ch. ', tmp)
+                else:
+                    continue
+        except IndexError:
+            pass
+
+        if tries > 50:
+            print "Could not find title! Check source for {} and update code.".format(ch_url)
+            sys.exit(-1)
+
+    # Put chapter title in h1 so the epub converter will see it as a chapter
+    if debug:
+        print "DEBUG: Chapter title found: {}".format(ch_title)
+    else:
+        ch_num += 1
+        sys.stdout.write("Processing Ch. {}...\r".format(ch_num))
+        sys.stdout.flush()
+    out.write('\n\n<h1>{}</h1>\n'.format(ch_title))
+
+    # Then loop through each next element and plop it in there
+    # until we hit a horizontal rule
+    start_tag = ch_soup.find("hr")
+    start_tag = start_tag.find_next(True)
+    for p in start_tag.find_all_next(True):
+        if p.name == "hr":
+            break
+        elif p.name == "p":
+            # Some chapters don't have the hr, so make sure it
+            # doesn't have any links (the prev/next chapter links)
+            for link in p.children:
+                if link.name == "a" and \
+                   link.text.strip() in ("Previous Chapter", "Next Chapter"):
+                    break
+            out.write(unicode(p))
+            out.write("\n")
+
+
 def run_pandoc_on(filenames):
     ''' Runs pandoc on the resulting html files '''
     import subprocess
@@ -66,7 +150,7 @@ def scrape(url, books, delay, skip_epub, debug):
     for elem in start.find_all_next('strong'):
 
         # Book: Coiling Dragon/Stellar Transformations
-        # Volume: Against the Gods
+        # Volume: Against the Gods, MArtial God Asura
         if elem.text.split()[0] in ("Book", "Volume"):
 
             # Skip unwanted books/volumes
@@ -89,6 +173,23 @@ def scrape(url, books, delay, skip_epub, debug):
                 out.write(('<html>\n<head>\n<meta charset="utf-8">\n<meta name'
                            '="description" content="{}">\n<title>{}</title>\n'
                            '</head>\n<body>').format(desc, html_title))
+
+                # Special case: Martial God Asura
+                if "mga-index" in url:
+                    # Get chapters in this volume
+                    match_obj = re.search('\((\d+)-(\d+)\)', elem.text)
+                    ch_begin, ch_end = match_obj.groups()
+                    # Then just loop over chapter URLs
+                    for ch_num in range(int(ch_begin), int(ch_end) + 1):
+                        time.sleep(delay)  # Slow down a bit so we don't get banned
+                        ch_url = url + "/mga-chapter-{}".format(ch_num)
+                        if debug:
+                            print "DEBUG: Fetching chapter URL:"
+                            print "DEBUG: {}".format(ch_url)
+                        process_chapter_page(ch_url, ch_num, out, debug)
+                    # Close out html
+                    out.write("\n\n</body>\n</html>\n")
+                    continue
 
                 # Now request each chapter and extract the content
                 # NOTE: This could be parallelized, but we don't want to get banned!
@@ -120,86 +221,8 @@ def scrape(url, books, delay, skip_epub, debug):
                     if debug:
                         print "DEBUG: Fetching chapter URL:"
                         print "DEBUG: {}".format(actual_ch_url)
-                    r_chap = requests.get(actual_ch_url)
-                    r_chap.encoding = 'utf-8'
-                    ch_soup = BeautifulSoup(r_chap.text, 'html.parser')
-                    first_el = ch_soup.find(True)
-                    this_strong = first_el
-                    this_bold = first_el
-                    tmp = ''
-                    tries = 0
-                    ch_title = ''
-                    while not ch_title:
-                        tries += 1
-                        if this_strong:
-                            try:
-                                this_strong = this_strong.find_next("strong")
-                                tmp = this_strong.text.strip()
-                            except AttributeError:
-                                pass
-                        elif this_bold:
-                            try:
-                                this_bold = this_bold.find_next("b")
-                                tmp = this_bold.text.strip()
-                            except AttributeError:
-                                pass
-                        else:
-                            print "Could not find any strong or bold elements with the title inside!"
-                            print "Check source for {} and update code.".format(ch_url.get('href'))
-                            sys.exit(-1)
-                        try:
-                            if debug:
-                                print "DEBUG: strong element found: {}".format(tmp)
-                            # Coiling Dragon- and Against the Gods-style chapter titles
-                            if "Chapter" in tmp.split():
-                                ch_title = tmp[tmp.find("Chapter"):].replace("Chapter", "Ch.")
-                                continue
-                            # Stellar Transformations-style chapter titles
-                            elif re.match('B[0-9]+C[0-9]+', tmp):
-                                ch_title = re.sub('B[0-9]+C', 'Ch. ', tmp)
-                            # Handle prologue
-                            elif tmp.split()[0] in ("Prologue"):
-                                ch_title = tmp
-                            # Handle stupid HTML in Stellar Transformations Chapter Ones
-                            elif "Book" in tmp.split():
-                                # Get next element text, which should be B[0-9]+C[0-9]+
-                                tmp = this_strong.find_next(True).text.strip()
-                                if re.match('B[0-9]+C[0-9]+', tmp):
-                                    ch_title = re.sub('B[0-9]+C', 'Ch. ', tmp)
-                                else:
-                                    continue
-                        except IndexError:
-                            pass
 
-                        if tries > 50:
-                            print "Could not find title! Check source for {} and update code.".format(ch_url)
-                            sys.exit(-1)
-
-                    # Put chapter title in h1 so the epub converter will see it as a chapter
-                    if debug:
-                        print "DEBUG: Chapter title found: {}".format(ch_title)
-                    else:
-                        ch_num += 1
-                        sys.stdout.write("Processing Ch. {}...\r".format(ch_num))
-                        sys.stdout.flush()
-                    out.write('\n\n<h1>{}</h1>\n'.format(ch_title))
-
-                    # Then loop through each next element and plop it in there
-                    # until we hit a horizontal rule
-                    start_tag = ch_soup.find("hr")
-                    start_tag = start_tag.find_next(True)
-                    for p in start_tag.find_all_next(True):
-                        if p.name == "hr":
-                            break
-                        elif p.name == "p":
-                            # Some chapters don't have the hr, so make sure it
-                            # doesn't have any links (the prev/next chapter links)
-                            for link in p.children:
-                                if link.name == "a" and \
-                                   link.text.strip() in ("Previous Chapter", "Next Chapter"):
-                                    break
-                            out.write(unicode(p))
-                            out.write("\n")
+                    process_chapter_page(actual_ch_url, ch_num, out, debug)
 
                 # Close out html
                 out.write("\n\n</body>\n</html>\n")
