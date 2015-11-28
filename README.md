@@ -5,7 +5,8 @@ Supported stories
 -----------------
 * [Against the Gods](http://www.wuxiaworld.com/atg-index/)
 * [Coiling Dragon](http://www.wuxiaworld.com/cdindex-html/)
-* [Desolate Era](http://www.wuxiaworld.com/desolate-era-index)
+* [Desolate Era](http://www.wuxiaworld.com/desolate-era-index/)
+* [Martial God Asura](http://www.wuxiaworld.com/mga-index/)
 * [Stellar Transformations](http://www.wuxiaworld.com/st-index/)
 
 A quick Python scraper for wuxiaworld.com using Requests & BeautifulSoup.
