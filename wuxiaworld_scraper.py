@@ -45,10 +45,15 @@ def process_chapter_page(ch_url, ch_num, out, debug):
     this_strong = first_el
     this_bold = first_el
     tmp = ''
-    tries = 0
+
+    # Get backup title
+    try:
+        backup_title = ch_soup.find('h1', {'class': 'entry-title'}).text.strip()
+    except:
+        backup_title = 'Ch. {}'.format(ch_num)
+
     ch_title = ''
     while not ch_title:
-        tries += 1
         if this_strong:
             try:
                 this_strong = this_strong.find_next("strong")
@@ -63,13 +68,16 @@ def process_chapter_page(ch_url, ch_num, out, debug):
                 pass
         else:
             print "Could not find any strong or bold elements with the title inside!"
-            print "Check source for {} and update code.".format(ch_url.get('href'))
-            sys.exit(-1)
+            print "Going with backup title..."
+            tmp = backup_title
         try:
             if debug:
                 print "DEBUG: strong element found: {}".format(tmp)
+            # Skip formatting when using backup title
+            if tmp == backup_title:
+                ch_title = tmp
             # Coiling Dragon- and Against the Gods-style chapter titles
-            if "Chapter" in tmp.split():
+            elif "Chapter" in tmp.split():
                 ch_title = tmp[tmp.find("Chapter"):].replace("Chapter", "Ch.")
                 continue
             # Stellar Transformations-style chapter titles
@@ -89,15 +97,10 @@ def process_chapter_page(ch_url, ch_num, out, debug):
         except IndexError:
             pass
 
-        if tries > 50:
-            print "Could not find title! Check source for {} and update code.".format(ch_url)
-            sys.exit(-1)
-
     # Put chapter title in h1 so the epub converter will see it as a chapter
     if debug:
         print "DEBUG: Chapter title found: {}".format(ch_title)
     else:
-        ch_num += 1
         sys.stdout.write("Processing Ch. {}...\r".format(ch_num))
         sys.stdout.flush()
     out.write('\n\n<h1>{}</h1>\n'.format(ch_title))
@@ -109,13 +112,9 @@ def process_chapter_page(ch_url, ch_num, out, debug):
     for p in start_tag.find_all_next(True):
         if p.name == "hr":
             break
+        elif "Previous Chapter" in p.text and "Next Chapter" in p.text:
+            break
         elif p.name == "p":
-            # Some chapters don't have the hr, so make sure it
-            # doesn't have any links (the prev/next chapter links)
-            for link in p.children:
-                if link.name == "a" and \
-                   link.text.strip() in ("Previous Chapter", "Next Chapter"):
-                    break
             out.write(unicode(p))
             out.write("\n")
 
@@ -147,11 +146,15 @@ def scrape(url, books, delay, skip_epub, debug):
     fnames = []
 
     # book names are between <strong> tags
-    for elem in start.find_all_next('strong'):
+    for elem in start.find_all_next(['strong', 'b']):
 
         # Book: Coiling Dragon/Stellar Transformations
         # Volume: Against the Gods, MArtial God Asura
-        if elem.text.split()[0] in ("Book", "Volume"):
+        try:
+            first_word = elem.text.split()[0]
+        except IndexError:
+            continue
+        if first_word in ("Book", "Volume"):
 
             # Skip unwanted books/volumes
             booknum = elem.text.split()[1].strip(':')
@@ -184,8 +187,7 @@ def scrape(url, books, delay, skip_epub, debug):
                         time.sleep(delay)  # Slow down a bit so we don't get banned
                         ch_url = url + "/mga-chapter-{}".format(ch_num)
                         if debug:
-                            print "DEBUG: Fetching chapter URL:"
-                            print "DEBUG: {}".format(ch_url)
+                            print "DEBUG: Fetching chapter URL: {}".format(ch_url)
                         process_chapter_page(ch_url, ch_num, out, debug)
                     # Close out html
                     out.write("\n\n</body>\n</html>\n")
@@ -197,7 +199,7 @@ def scrape(url, books, delay, skip_epub, debug):
                 ch_num = 0
                 for ch_url in elem.find_all_next(True):
                     # If it's a horizontal rule or a strong, there's a new book
-                    if ch_url.name in ['hr', 'strong']:
+                    if ch_url.name in ['hr', 'strong'] and ch_num > 0:
                         print "Found end of Book {}...".format(booknum)
                         break
                     # If it's something other than an anchor, skip it
@@ -222,6 +224,7 @@ def scrape(url, books, delay, skip_epub, debug):
                         print "DEBUG: Fetching chapter URL:"
                         print "DEBUG: {}".format(actual_ch_url)
 
+                    ch_num += 1
                     process_chapter_page(actual_ch_url, ch_num, out, debug)
 
                 # Close out html
